@@ -1,0 +1,26 @@
+{
+  "template": "https://github.com/brightway-lca/cookiecutter-brightwaylib",
+  "commit": "09756bb09ccbc19e9d3b803ca955af93a33f2b57",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "full_name": "Chris Mutel",
+      "email": "cmutel@gmail.com",
+      "github_username": "brightway-lca",
+      "project_name": "edge-of-the-world",
+      "package_name": "bw_eotw",
+      "project_short_description": "An alternate backend for Brightway that allows richer edge descriptions that don't map 1-to-1 to matrix values.",
+      "version": "0.0.1",
+      "use_pytest": "y",
+      "open_source_license": "MIT",
+      "copyright_year": "2026",
+      "code_of_conduct_contact": "cmutel@gmail.com",
+      "_copy_without_render": [
+        ".github/*"
+      ],
+      "_template": "https://github.com/brightway-lca/cookiecutter-brightwaylib",
+      "_commit": "09756bb09ccbc19e9d3b803ca955af93a33f2b57"
+    }
+  },
+  "directory": null
+}
