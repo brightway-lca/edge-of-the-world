@@ -159,9 +159,8 @@ def test_config_passed_to_interpreter_during_process():
 # ---------------------------------------------------------------------------
 
 
-@bw2test
-def test_provider_mix_expands_to_correct_matrix_entries():
-    """Each provider in the mix yields its own matrix row with a scaled amount."""
+def _write_grid():
+    """Write a two-node grid database and return (wind_id, solar_id)."""
     grid = Database("grid")
     grid.write(
         {
@@ -183,6 +182,13 @@ def test_provider_mix_expands_to_correct_matrix_entries():
             },
         }
     )
+    return get_id(("grid", "wind")), get_id(("grid", "solar"))
+
+
+@bw2test
+def test_provider_mix_expands_to_correct_matrix_entries():
+    """Each provider in the mix yields its own matrix row with a scaled amount."""
+    wind_id, solar_id = _write_grid()
 
     user = Database("user", backend="eotw")
     user.write(
@@ -194,15 +200,15 @@ def test_provider_mix_expands_to_correct_matrix_entries():
                     {"input": ("user", "factory"), "output": ("user", "factory"),
                      "amount": 1.0, "type": "production"},
                     {
-                        "input": ("grid", "wind"),   # bw2data needs a valid input for storage
+                        "input": ("grid", "wind"),
                         "output": ("user", "factory"),
                         "type": "technosphere",
                         "interpreter": "provider_mix",
                         "product_name": "electricity",
                         "amount": 2.0,
                         "mix": [
-                            {"input": ("grid", "wind"),  "share": 0.60},
-                            {"input": ("grid", "solar"), "share": 0.40},
+                            {"input": wind_id,  "share": 0.60},
+                            {"input": solar_id, "share": 0.40},
                         ],
                     },
                 ],
@@ -215,12 +221,92 @@ def test_provider_mix_expands_to_correct_matrix_entries():
     tech_data = dp.get_resource("user_technosphere_matrix.data")[0]
     tech_indices = dp.get_resource("user_technosphere_matrix.indices")[0]
 
-    wind_id = get_id(("grid", "wind"))
-    solar_id = get_id(("grid", "solar"))
     factory_id = get_id(("user", "factory"))
-
     rows = list(zip(tech_indices["row"], tech_indices["col"], tech_data))
     amounts_by_row = {row: amt for row, col, amt in rows if col == factory_id}
 
     assert amounts_by_row[wind_id] == pytest.approx(2.0 * 0.60)
     assert amounts_by_row[solar_id] == pytest.approx(2.0 * 0.40)
+
+
+@bw2test
+def test_provider_mix_adds_provider_database_to_depends():
+    """provider_mix edges to another database must appear in depends after process()."""
+    wind_id, solar_id = _write_grid()
+
+    user = Database("user", backend="eotw")
+    user.write(
+        {
+            ("user", "factory"): {
+                "name": "factory",
+                "type": "process",
+                "exchanges": [
+                    {"input": ("user", "factory"), "output": ("user", "factory"),
+                     "amount": 1.0, "type": "production"},
+                    {
+                        "input": ("grid", "wind"),
+                        "output": ("user", "factory"),
+                        "type": "technosphere",
+                        "interpreter": "provider_mix",
+                        "product_name": "electricity",
+                        "amount": 1.0,
+                        "mix": [
+                            {"input": wind_id,  "share": 0.60},
+                            {"input": solar_id, "share": 0.40},
+                        ],
+                    },
+                ],
+            }
+        }
+    )
+    user.process()
+    assert "grid" in user.metadata["depends"]
+
+
+@bw2test
+def test_provider_mix_write_rejects_cross_database_mix():
+    """Database.write() must raise when mix providers span multiple databases."""
+    wind_id, solar_id = _write_grid()
+
+    # Write a second, unrelated database
+    other = Database("other")
+    other.write(
+        {
+            ("other", "Z"): {
+                "name": "node Z",
+                "type": "process",
+                "exchanges": [
+                    {"input": ("other", "Z"), "output": ("other", "Z"),
+                     "amount": 1.0, "type": "production"},
+                ],
+            }
+        }
+    )
+    other_id = get_id(("other", "Z"))
+
+    user = Database("user", backend="eotw")
+    with pytest.raises(ValueError, match="database"):
+        user.write(
+            {
+                ("user", "factory"): {
+                    "name": "factory",
+                    "type": "process",
+                    "exchanges": [
+                        {"input": ("user", "factory"), "output": ("user", "factory"),
+                         "amount": 1.0, "type": "production"},
+                        {
+                            "input": ("grid", "wind"),
+                            "output": ("user", "factory"),
+                            "type": "technosphere",
+                            "interpreter": "provider_mix",
+                            "product_name": "electricity",
+                            "amount": 1.0,
+                            "mix": [
+                                {"input": wind_id,  "share": 0.60},
+                                {"input": other_id, "share": 0.40},
+                            ],
+                        },
+                    ],
+                }
+            }
+        )
