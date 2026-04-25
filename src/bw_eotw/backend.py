@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from bw2data.backends import SQLiteBackend
 
 from bw_eotw.node_classes import RichNode
-from bw_eotw.registry import resolve
+from bw_eotw.registry import normalize_edge, resolve, validate_edge
 
 
 class RichEdgesBackend(SQLiteBackend):
@@ -40,3 +40,13 @@ class RichEdgesBackend(SQLiteBackend):
             else:
                 for entry in resolve(edge_data, self._process_config):
                     yield entry.as_dict()
+
+    def _efficient_write_many_data(
+        self, data: list, indices: bool = True, check_typos: bool = True
+    ) -> None:
+        for ds in data:
+            for exchange in ds.get("exchanges", []):
+                if "interpreter" in exchange:
+                    normalize_edge(exchange)
+                    validate_edge(exchange)
+        super()._efficient_write_many_data(data, indices=indices, check_typos=check_typos)
