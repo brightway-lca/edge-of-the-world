@@ -245,7 +245,7 @@ class TestScaleLossUncertainty:
 
 class TestLossValidation:
     def validate(self, loss_factor):
-        validate_edge({"interpreter": "loss", "loss_factor": loss_factor, "input": ("db", "x")})
+        validate_edge({"interpreter": "loss", "loss_factor": loss_factor, "input": 1})
 
     def test_zero_is_valid(self):
         self.validate(0.0)
@@ -273,11 +273,11 @@ class TestLossValidation:
 
     def test_missing_loss_factor_raises(self):
         with pytest.raises(ValueError, match="loss_factor"):
-            validate_edge({"interpreter": "loss", "input": ("db", "x")})
+            validate_edge({"interpreter": "loss", "input": 1})
 
     def test_non_loss_edge_not_validated(self):
         # temporal ignores loss_factor; only the input field is checked
-        validate_edge({"interpreter": "temporal", "loss_factor": 99.0, "input": ("db", "x")})
+        validate_edge({"interpreter": "temporal", "loss_factor": 99.0, "input": 1})
 
     def test_edge_without_interpreter_not_validated(self):
         validate_edge({"amount": 1.0, "loss_factor": 99.0})
@@ -357,14 +357,14 @@ class TestScenarioInterpreter:
 class TestScenarioValidation:
     def test_missing_scenario_values_raises(self):
         with pytest.raises(ValueError, match="scenario_values"):
-            validate_edge({"interpreter": "scenario", "input": ("db", "x")})
+            validate_edge({"interpreter": "scenario", "input": 1})
 
     def test_empty_scenario_values_raises(self):
         with pytest.raises(ValueError, match="scenario_values"):
-            validate_edge({"interpreter": "scenario", "scenario_values": {}, "input": ("db", "x")})
+            validate_edge({"interpreter": "scenario", "scenario_values": {}, "input": 1})
 
     def test_valid_scenario_values_passes(self):
-        validate_edge({"interpreter": "scenario", "scenario_values": {"baseline": 1.0}, "input": ("db", "x")})
+        validate_edge({"interpreter": "scenario", "scenario_values": {"baseline": 1.0}, "input": 1})
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +379,7 @@ MIX = [
 ]
 
 # Maps integer node IDs to their database names, used to mock _get_node_database
-FAKE_NODE_DATABASES = {10: "grid", 11: "grid", 12: "grid", 99: "other_db"}
+FAKE_NODE_DATABASES = {10: "grid", 11: "grid", 12: "grid", 50: "grid", 99: "other_db"}
 
 
 def _fake_get_node_database(node_id):
@@ -451,7 +451,7 @@ class TestProviderMixValidation:
         base = {
             "interpreter": "provider_mix",
             "product_name": "electricity",
-            "input": ("grid", "electricity"),
+            "input": 50,
             "mix": list(MIX),
         }
         base.update(overrides)
@@ -680,25 +680,25 @@ class TestTemporalScenarioInterpreter:
 class TestTemporalScenarioValidation:
     def test_missing_scenario_temporal_values_raises(self):
         with pytest.raises(ValueError, match="scenario_temporal_values"):
-            validate_edge({"interpreter": "temporal_scenario", "input": ("db", "x")})
+            validate_edge({"interpreter": "temporal_scenario", "input": 1})
 
     def test_empty_scenario_temporal_values_raises(self):
         with pytest.raises(ValueError, match="scenario_temporal_values"):
-            validate_edge({"interpreter": "temporal_scenario", "scenario_temporal_values": {}, "input": ("db", "x")})
+            validate_edge({"interpreter": "temporal_scenario", "scenario_temporal_values": {}, "input": 1})
 
     def test_empty_scenario_raises(self):
         with pytest.raises(ValueError, match="baseline"):
             validate_edge({
                 "interpreter": "temporal_scenario",
                 "scenario_temporal_values": {"baseline": {}},
-                "input": ("db", "x"),
+                "input": 1,
             })
 
     def test_valid_without_default_year_passes(self):
         validate_edge({
             "interpreter": "temporal_scenario",
             "scenario_temporal_values": SCENARIO_TEMPORAL_VALUES,
-            "input": ("db", "x"),
+            "input": 1,
         })
 
     def test_valid_with_default_year_passes(self):
@@ -706,7 +706,7 @@ class TestTemporalScenarioValidation:
             "interpreter": "temporal_scenario",
             "scenario_temporal_values": SCENARIO_TEMPORAL_VALUES,
             "default_year": 2020,
-            "input": ("db", "x"),
+            "input": 1,
         })
 
     def test_default_year_missing_from_one_scenario_raises(self):
@@ -719,7 +719,7 @@ class TestTemporalScenarioValidation:
                 "interpreter": "temporal_scenario",
                 "scenario_temporal_values": values,
                 "default_year": 2020,
-                "input": ("db", "x"),
+                "input": 1,
             })
 
     def test_default_year_present_in_all_scenarios_passes(self):
@@ -731,5 +731,5 @@ class TestTemporalScenarioValidation:
             "interpreter": "temporal_scenario",
             "scenario_temporal_values": values,
             "default_year": 2020,
-            "input": ("db", "x"),
+            "input": 1,
         })

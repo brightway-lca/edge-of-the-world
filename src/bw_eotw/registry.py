@@ -33,7 +33,13 @@ def _get_node_database(node_id: int) -> str:
 class Interpreter:
     """Base class for all edge interpreters.
 
-    Subclasses must implement ``__call__`` (interpreter logic) and
+    Subclassing is not required — duck typing is supported.  Any object
+    registered via ``@register`` that implements ``__call__``,
+    ``iter_node_ids``, ``normalize``, and ``validate`` with compatible
+    signatures will work.  This class provides the default ``normalize``
+    (no-op) and the same-database ``validate``; subclass to inherit them.
+
+    Concrete implementations must provide ``__call__`` (interpreter logic) and
     ``iter_node_ids`` (every extra integer node ID embedded in the edge data,
     beyond the standard ``input`` field managed by bw2data).
 
@@ -77,11 +83,13 @@ class Interpreter:
 
     def validate(self, edge_data: dict) -> None:
         """Enforce the same-database invariant across all node references."""
-        edge_input = edge_data.get("input")
-        if edge_input is None:
+        if edge_data.get("input") is None:
             raise ValueError("Interpreter edge must have an 'input' field")
-        expected_db = edge_input[0]
-        for node_id in self.iter_node_ids(edge_data):
+        node_ids = list(self.iter_node_ids(edge_data))
+        if not node_ids:
+            return
+        expected_db = _get_node_database(edge_data["input"])
+        for node_id in node_ids:
             node_db = _get_node_database(node_id)
             if node_db != expected_db:
                 raise ValueError(
