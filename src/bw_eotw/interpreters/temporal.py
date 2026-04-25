@@ -3,14 +3,12 @@ from collections.abc import Iterator
 from bw_eotw.matrix_entry import MatrixEntry
 from bw_eotw.registry import register
 
-DEFAULT_TEMPORAL_YEAR = 2020
-
 
 @register("temporal")
 def temporal(edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
-    """Select a value by year, falling back to DEFAULT_TEMPORAL_YEAR (2020).
+    """Select a value by year, with an optional per-edge default year.
 
-    Edge data must contain a ``temporal_values`` dict keyed by integer year.
+    Edge data must contain ``temporal_values``, a dict keyed by integer year.
     Each value may be a plain number or an uncertainty dict::
 
         {
@@ -20,18 +18,34 @@ def temporal(edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
                 2020: {"amount": 0.4, "uncertainty_type": 2, "scale": 0.05},
                 2030: 0.6,
             },
+            "default_year": 2020,   # optional — used when config year is absent or not found
         }
 
-    If ``config["year"]`` is not present in ``temporal_values``, the value for
-    ``DEFAULT_TEMPORAL_YEAR`` is used.  A ``KeyError`` is raised if neither the
-    requested year nor the fallback year is available.
+    Year selection order:
+
+    1. ``config["year"]`` if present and in ``temporal_values``.
+    2. ``edge_data["default_year"]`` if present and in ``temporal_values``.
+    3. ``KeyError`` otherwise, listing the available years.
     """
-    year = config.get("year", DEFAULT_TEMPORAL_YEAR)
     values: dict = edge_data["temporal_values"]
-    value = values.get(year, values.get(DEFAULT_TEMPORAL_YEAR))
+    year = config.get("year")
+    default_year = edge_data.get("default_year")
+
+    value = values.get(year) if year is not None else None
+    if value is None and default_year is not None:
+        value = values.get(default_year)
+
     if value is None:
+        tried = []
+        if year is not None:
+            tried.append(f"year={year} (from config)")
+        if default_year is not None:
+            tried.append(f"default_year={default_year} (from edge)")
+        if not tried:
+            tried.append("no 'year' in config and no 'default_year' in edge data")
         raise KeyError(
-            f"No temporal value for year {year} and no {DEFAULT_TEMPORAL_YEAR} "
-            f"fallback. Available years: {sorted(values)}"
+            f"No temporal value found (tried: {', '.join(tried)}). "
+            f"Available years: {sorted(values)}"
         )
+
     yield MatrixEntry.from_edge_value(value, edge_data)

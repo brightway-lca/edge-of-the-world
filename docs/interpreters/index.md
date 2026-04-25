@@ -84,3 +84,4 @@ Validators are optional.  Interpreters without a registered validator skip valid
 | [`loss`](loss.md) | Expands into a main flow and a proportional loss component |
 | [`scenario`](scenario.md) | Selects a value by scenario name; raises if the scenario is absent |
 | [`provider_mix`](provider_mix.md) | Splits a product demand across multiple provider nodes by share |
+| [`temporal_scenario`](temporal_scenario.md) | Selects a value by scenario name and then by year |

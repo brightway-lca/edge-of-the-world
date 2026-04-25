@@ -52,5 +52,6 @@ nav:
     - Loss: interpreters/loss.md
     - Scenario: interpreters/scenario.md
     - Provider mix: interpreters/provider_mix.md
+    - Temporal scenario: interpreters/temporal_scenario.md
   - Contributing: contributing.md
   - Changelog: changelog.md
