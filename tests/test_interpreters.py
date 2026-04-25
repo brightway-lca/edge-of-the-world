@@ -27,16 +27,16 @@ def edge(**kwargs):
 class TestTemporalInterpreter:
     TEMPORAL_VALUES = {2010: 0.3, 2020: 0.4, 2030: 0.6}
 
-    def resolve(self, config, values=None):
-        return list(
-            resolve(
-                edge(
-                    interpreter="temporal",
-                    temporal_values=values or self.TEMPORAL_VALUES,
-                ),
-                config,
-            )
+    def resolve(self, config, values=None, default_year=None):
+        edge_data = edge(
+            interpreter="temporal",
+            temporal_values=values or self.TEMPORAL_VALUES,
         )
+        if default_year is not None:
+            edge_data["default_year"] = default_year
+        return list(resolve(edge_data, config))
+
+    # --- exact year match ---
 
     def test_exact_year_match(self):
         entries = self.resolve({"year": 2030})
@@ -47,21 +47,35 @@ class TestTemporalInterpreter:
         entries = self.resolve({"year": 2010})
         assert entries[0].amount == pytest.approx(0.3)
 
-    def test_fallback_when_year_not_present(self):
-        entries = self.resolve({"year": 2025})
-        assert entries[0].amount == pytest.approx(0.4)  # 2020 fallback
+    # --- default_year fallback (per-edge, not global) ---
 
-    def test_empty_config_uses_default_year(self):
-        entries = self.resolve({})
-        assert entries[0].amount == pytest.approx(0.4)  # 2020 fallback
+    def test_default_year_used_when_config_year_missing(self):
+        entries = self.resolve({}, default_year=2020)
+        assert entries[0].amount == pytest.approx(0.4)
 
-    def test_missing_year_and_missing_fallback_raises(self):
-        with pytest.raises(KeyError, match="2020"):
+    def test_default_year_used_when_config_year_not_in_values(self):
+        entries = self.resolve({"year": 2025}, default_year=2020)
+        assert entries[0].amount == pytest.approx(0.4)
+
+    def test_config_year_takes_priority_over_default_year(self):
+        entries = self.resolve({"year": 2030}, default_year=2010)
+        assert entries[0].amount == pytest.approx(0.6)  # 2030, not 2010
+
+    # --- raises without a usable year ---
+
+    def test_no_year_in_config_and_no_default_year_raises(self):
+        with pytest.raises(KeyError, match="no 'year' in config"):
+            self.resolve({})
+
+    def test_year_not_in_values_and_no_default_year_raises(self):
+        with pytest.raises(KeyError, match="year=2025"):
             self.resolve({"year": 2025}, values={2010: 0.3, 2030: 0.6})
 
     def test_error_message_lists_available_years(self):
         with pytest.raises(KeyError, match="2010"):
             self.resolve({"year": 2025}, values={2010: 0.3, 2030: 0.6})
+
+    # --- value types ---
 
     def test_plain_number_value(self):
         entries = self.resolve({"year": 2020}, values={2020: 1.5})
@@ -78,6 +92,8 @@ class TestTemporalInterpreter:
         assert e.uncertainty_type == 2
         assert e.scale == pytest.approx(0.05)
 
+    # --- edge fields propagated ---
+
     def test_row_and_col_taken_from_edge(self):
         entries = self.resolve({"year": 2020})
         assert entries[0].row == 10
@@ -87,7 +103,7 @@ class TestTemporalInterpreter:
         entries = list(
             resolve(
                 {**BASE_EDGE, "flip": True, "interpreter": "temporal",
-                 "temporal_values": {2020: 1.0}},
+                 "temporal_values": {2020: 1.0}, "default_year": 2020},
                 {},
             )
         )
@@ -497,3 +513,165 @@ class TestProviderMixValidation:
     def test_single_provider_at_full_share_is_valid(self):
         mix = [{"input": ("db", "only"), "share": 1.0}]
         validate_edge(self.valid_edge(mix=mix))
+
+
+# ---------------------------------------------------------------------------
+# temporal_scenario
+# ---------------------------------------------------------------------------
+
+SCENARIO_TEMPORAL_VALUES = {
+    "baseline":   {2020: 1.00, 2030: 0.85},
+    "optimistic": {2020: 0.80, 2030: {"amount": 0.60, "uncertainty_type": 2, "scale": 0.05}},
+}
+
+
+class TestTemporalScenarioInterpreter:
+    def resolve(self, config, all_values=None, default_year=None):
+        edge_data = edge(
+            interpreter="temporal_scenario",
+            scenario_temporal_values=all_values or SCENARIO_TEMPORAL_VALUES,
+        )
+        if default_year is not None:
+            edge_data["default_year"] = default_year
+        return list(resolve(edge_data, config))
+
+    # --- scenario selection ---
+
+    def test_exact_scenario_and_year(self):
+        entries = self.resolve({"scenario": "baseline", "year": 2020})
+        assert len(entries) == 1
+        assert entries[0].amount == pytest.approx(1.00)
+
+    def test_all_scenarios_resolve(self):
+        expected = {"baseline": 1.00, "optimistic": 0.80}
+        for name, val in expected.items():
+            entries = self.resolve({"scenario": name, "year": 2020})
+            assert entries[0].amount == pytest.approx(val)
+
+    def test_missing_scenario_key_in_config_raises(self):
+        with pytest.raises(KeyError, match="scenario"):
+            self.resolve({"year": 2020})
+
+    def test_unknown_scenario_raises(self):
+        with pytest.raises(KeyError, match="unknown"):
+            self.resolve({"scenario": "unknown", "year": 2020})
+
+    def test_error_lists_available_scenarios(self):
+        with pytest.raises(KeyError, match="baseline"):
+            self.resolve({"scenario": "missing", "year": 2020})
+
+    # --- year selection within scenario ---
+
+    def test_exact_year_within_scenario(self):
+        entries = self.resolve({"scenario": "baseline", "year": 2030})
+        assert entries[0].amount == pytest.approx(0.85)
+
+    def test_default_year_used_when_config_year_missing(self):
+        entries = self.resolve({"scenario": "baseline"}, default_year=2020)
+        assert entries[0].amount == pytest.approx(1.00)
+
+    def test_default_year_used_when_config_year_not_in_scenario(self):
+        entries = self.resolve({"scenario": "baseline", "year": 2025}, default_year=2020)
+        assert entries[0].amount == pytest.approx(1.00)
+
+    def test_config_year_takes_priority_over_default_year(self):
+        entries = self.resolve({"scenario": "baseline", "year": 2030}, default_year=2020)
+        assert entries[0].amount == pytest.approx(0.85)  # 2030, not 2020
+
+    def test_no_year_and_no_default_year_raises(self):
+        with pytest.raises(KeyError, match="no 'year' in config"):
+            self.resolve({"scenario": "baseline"})
+
+    def test_year_not_in_scenario_and_no_default_year_raises(self):
+        with pytest.raises(KeyError, match="year=2025"):
+            self.resolve({"scenario": "baseline", "year": 2025})
+
+    def test_error_lists_available_years(self):
+        with pytest.raises(KeyError, match="2020"):
+            self.resolve({"scenario": "baseline", "year": 2025})
+
+    # --- value types ---
+
+    def test_plain_number_value(self):
+        entries = self.resolve({"scenario": "baseline", "year": 2020})
+        e = entries[0]
+        assert e.amount == pytest.approx(1.00)
+        assert e.loc == pytest.approx(1.00)
+        assert e.uncertainty_type == 0
+
+    def test_uncertainty_dict_value(self):
+        entries = self.resolve({"scenario": "optimistic", "year": 2030})
+        e = entries[0]
+        assert e.amount == pytest.approx(0.60)
+        assert e.uncertainty_type == 2
+        assert e.scale == pytest.approx(0.05)
+
+    # --- edge fields propagated ---
+
+    def test_row_and_col_taken_from_edge(self):
+        entries = self.resolve({"scenario": "baseline", "year": 2020})
+        assert entries[0].row == 10
+        assert entries[0].col == 20
+
+    def test_flip_taken_from_edge(self):
+        entries = list(
+            resolve(
+                {**BASE_EDGE, "flip": True, "interpreter": "temporal_scenario",
+                 "scenario_temporal_values": {"s": {2020: 1.0}}},
+                {"scenario": "s", "year": 2020},
+            )
+        )
+        assert entries[0].flip is True
+
+
+class TestTemporalScenarioValidation:
+    def test_missing_scenario_temporal_values_raises(self):
+        with pytest.raises(ValueError, match="scenario_temporal_values"):
+            validate_edge({"interpreter": "temporal_scenario"})
+
+    def test_empty_scenario_temporal_values_raises(self):
+        with pytest.raises(ValueError, match="scenario_temporal_values"):
+            validate_edge({"interpreter": "temporal_scenario", "scenario_temporal_values": {}})
+
+    def test_empty_scenario_raises(self):
+        with pytest.raises(ValueError, match="baseline"):
+            validate_edge({
+                "interpreter": "temporal_scenario",
+                "scenario_temporal_values": {"baseline": {}},
+            })
+
+    def test_valid_without_default_year_passes(self):
+        validate_edge({
+            "interpreter": "temporal_scenario",
+            "scenario_temporal_values": SCENARIO_TEMPORAL_VALUES,
+        })
+
+    def test_valid_with_default_year_passes(self):
+        validate_edge({
+            "interpreter": "temporal_scenario",
+            "scenario_temporal_values": SCENARIO_TEMPORAL_VALUES,
+            "default_year": 2020,
+        })
+
+    def test_default_year_missing_from_one_scenario_raises(self):
+        values = {
+            "baseline":   {2020: 1.0, 2030: 0.9},
+            "optimistic": {2030: 0.7},            # 2020 absent
+        }
+        with pytest.raises(ValueError, match="default_year"):
+            validate_edge({
+                "interpreter": "temporal_scenario",
+                "scenario_temporal_values": values,
+                "default_year": 2020,
+            })
+
+    def test_default_year_present_in_all_scenarios_passes(self):
+        values = {
+            "baseline":   {2020: 1.0, 2030: 0.9},
+            "optimistic": {2020: 0.8, 2030: 0.7},
+        }
+        validate_edge({
+            "interpreter": "temporal_scenario",
+            "scenario_temporal_values": values,
+            "default_year": 2020,
+        })

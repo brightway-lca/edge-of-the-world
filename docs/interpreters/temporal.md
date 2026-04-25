@@ -2,11 +2,11 @@
 
 **Name:** `"temporal"`
 
-Selects an amount from a year-keyed lookup table, falling back to the year 2020 when the requested year is not present.
+Selects an amount from a year-keyed lookup table.  An optional per-edge `default_year` is used as a fallback when the config year is absent or not found.
 
 ## Edge data format
 
-`temporal_values` is a dict keyed by **integer year**.  Each value is either a plain number or a bw2data-style uncertainty dict:
+`temporal_values` is a dict keyed by **integer year**.  Each value is either a plain number or a bw2data-style uncertainty dict.  `default_year` is optional:
 
 ```python
 {
@@ -19,6 +19,7 @@ Selects an amount from a year-keyed lookup table, falling back to the year 2020 
         2020: {"amount": 0.40, "uncertainty_type": 2, "scale": 0.04},
         2030: 0.60,
     },
+    "default_year": 2020,   # optional
 }
 ```
 
@@ -26,22 +27,25 @@ Selects an amount from a year-keyed lookup table, falling back to the year 2020 
 
 | Key | Type | Description |
 |---|---|---|
-| `year` | `int` | The target year.  Defaults to `2020` if absent. |
+| `year` | `int` | The target year.  Optional; falls back to `default_year` if absent or not found. |
 
 ## Year selection logic
 
-1. If `config["year"]` is a key in `temporal_values`, that value is used.
-2. Otherwise, the value for year `2020` is used as a fallback.
-3. If neither the requested year nor `2020` is present, a `KeyError` is raised with a message listing the available years.
+1. If `config["year"]` is present **and** is a key in `temporal_values`, that value is used.
+2. Otherwise, if `edge_data["default_year"]` is present and is a key in `temporal_values`, that value is used.
+3. Otherwise a `KeyError` is raised, listing what was tried and the available years.
 
 ```python
 # year=2030 → uses 0.60
 db.process(config={"year": 2030})
 
-# year=2025 → not in table, falls back to 2020 → uses 0.40
+# year=2025 → not in table, falls back to default_year=2020 → uses 0.40
 db.process(config={"year": 2025})
 
-# no year → defaults to 2020 → uses 0.40
+# no year, default_year=2020 in edge data → uses 0.40
+db.process(config={})
+
+# no year, no default_year → KeyError
 db.process(config={})
 ```
 
