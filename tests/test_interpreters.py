@@ -4,7 +4,6 @@ from unittest.mock import patch
 import pytest
 
 import bw_eotw  # noqa: F401 — ensures all interpreters are registered
-from bw_eotw.interpreters.loss import _scale_loss_uncertainty
 from bw_eotw.registry import resolve, validate_edge
 
 
@@ -154,38 +153,11 @@ class TestLossInterpreter:
         assert entries[0].row == entries[1].row == 10
         assert entries[0].col == entries[1].col == 20
 
-    def test_loss_factor_as_uncertainty_dict(self):
-        entries = self.resolve(
-            2.0, {"amount": 0.1, "uncertainty_type": 2, "scale": 0.02}
-        )
-        loss_entry = entries[1]
-        assert loss_entry.amount == pytest.approx(0.2)       # 2.0 * 0.1
-        assert loss_entry.scale == pytest.approx(0.04)       # 2.0 * 0.02
-        assert loss_entry.uncertainty_type == 2
-
-    def test_main_entry_uncertainty_unaffected_by_loss_factor(self):
-        entries = self.resolve(
-            1.0, {"amount": 0.05, "uncertainty_type": 2, "scale": 0.01}
-        )
-        main = entries[0]
-        assert main.uncertainty_type == 0  # from edge_data, not loss_factor
-        assert math.isnan(main.scale)
-
-    def test_main_entry_inherits_edge_uncertainty(self):
-        entries = list(
-            resolve(
-                edge(
-                    interpreter="loss",
-                    amount=1.0,
-                    uncertainty_type=2,
-                    scale=0.1,
-                    loss_factor=0.05,
-                ),
-                {},
-            )
-        )
-        assert entries[0].uncertainty_type == 2
-        assert entries[0].scale == pytest.approx(0.1)
+    def test_both_entries_have_no_uncertainty(self):
+        entries = self.resolve(1.0, 0.1)
+        for e in entries:
+            assert e.uncertainty_type == 0
+            assert math.isnan(e.scale)
 
     def test_flip_propagates_to_both_entries(self):
         entries = list(
@@ -197,45 +169,6 @@ class TestLossInterpreter:
         )
         assert entries[0].flip is True
         assert entries[1].flip is True
-
-
-# ---------------------------------------------------------------------------
-# _scale_loss_uncertainty helper
-# ---------------------------------------------------------------------------
-
-
-class TestScaleLossUncertainty:
-    def test_scales_amount(self):
-        result = _scale_loss_uncertainty({"amount": 0.1}, 2.0)
-        assert result["amount"] == pytest.approx(0.2)
-
-    def test_sets_loc_to_scaled_amount_when_absent(self):
-        result = _scale_loss_uncertainty({"amount": 0.1}, 2.0)
-        assert result["loc"] == pytest.approx(0.2)
-
-    def test_scales_explicit_loc(self):
-        result = _scale_loss_uncertainty({"amount": 0.1, "loc": 0.1}, 2.0)
-        assert result["loc"] == pytest.approx(0.2)
-
-    def test_scales_scale_field(self):
-        result = _scale_loss_uncertainty({"amount": 0.1, "scale": 0.02}, 2.0)
-        assert result["scale"] == pytest.approx(0.04)
-
-    def test_scales_minimum_and_maximum(self):
-        result = _scale_loss_uncertainty(
-            {"amount": 0.1, "minimum": 0.05, "maximum": 0.15}, 2.0
-        )
-        assert result["minimum"] == pytest.approx(0.10)
-        assert result["maximum"] == pytest.approx(0.30)
-
-    def test_does_not_scale_shape(self):
-        result = _scale_loss_uncertainty({"amount": 0.1, "shape": 3.0}, 2.0)
-        assert result["shape"] == pytest.approx(3.0)
-
-    def test_does_not_mutate_input(self):
-        original = {"amount": 0.1, "scale": 0.01}
-        _scale_loss_uncertainty(original, 5.0)
-        assert original["scale"] == pytest.approx(0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -264,12 +197,19 @@ class TestLossValidation:
         with pytest.raises(ValueError, match="0 and 1"):
             self.validate(-0.1)
 
-    def test_uncertainty_dict_amount_checked(self):
-        self.validate({"amount": 0.5, "uncertainty_type": 2, "scale": 0.05})
+    def test_uncertainty_dict_raises(self):
+        with pytest.raises(ValueError, match="plain number"):
+            self.validate({"amount": 0.5, "uncertainty_type": 2, "scale": 0.05})
 
-    def test_uncertainty_dict_above_one_raises(self):
-        with pytest.raises(ValueError, match="0 and 1"):
-            self.validate({"amount": 1.5, "uncertainty_type": 2})
+    def test_uncertainty_on_amount_raises(self):
+        with pytest.raises(ValueError, match="uncertainty"):
+            validate_edge({
+                "interpreter": "loss",
+                "amount": 1.0,
+                "uncertainty_type": 2,
+                "loss_factor": 0.05,
+                "input": 1,
+            })
 
     def test_missing_loss_factor_raises(self):
         with pytest.raises(ValueError, match="loss_factor"):
@@ -508,6 +448,11 @@ class TestProviderMixValidation:
     def test_negative_share_raises(self):
         bad_mix = [{"input": 10, "share": -0.1}, {"input": 11, "share": 1.1}]
         with pytest.raises(ValueError, match="0 and 1"):
+            validate_edge(self.valid_edge(mix=bad_mix))
+
+    def test_share_as_uncertainty_dict_raises(self):
+        bad_mix = [{"input": 10, "share": {"amount": 0.5, "uncertainty_type": 2}}]
+        with pytest.raises(ValueError, match="plain number"):
             validate_edge(self.valid_edge(mix=bad_mix))
 
     def test_shares_not_summing_to_one_raises(self):

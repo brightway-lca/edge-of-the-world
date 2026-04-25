@@ -81,6 +81,11 @@ class ProviderMixInterpreter(Interpreter):
             share = provider.get("share")
             if share is None:
                 raise ValueError(f"mix[{i}] is missing required key 'share'")
+            if isinstance(share, dict):
+                raise ValueError(
+                    f"mix[{i}] share must be a plain number, not an uncertainty dict. "
+                    "Uncertainty in shares requires correlated sampling, which is not yet implemented."
+                )
             if not (0.0 <= share <= 1.0):
                 raise ValueError(
                     f"mix[{i}] share must be between 0 and 1 (inclusive), got {share}"

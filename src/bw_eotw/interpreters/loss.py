@@ -1,36 +1,15 @@
-import math
 from collections.abc import Iterator
 
 from bw_eotw.matrix_entry import MatrixEntry
 from bw_eotw.registry import Interpreter, register
 
 
-def _scale_loss_uncertainty(loss_factor: dict, base_amount: float) -> dict:
-    """Scale a loss_factor uncertainty dict by base_amount.
-
-    Distribution parameters that are in the same units as the amount
-    (loc, scale, minimum, maximum) are multiplied by base_amount.
-    Dimensionless parameters (shape, uncertainty_type, negative) are not.
-    """
-    scaled = dict(loss_factor)
-    loss_amount = base_amount * loss_factor["amount"]
-    scaled["amount"] = loss_amount
-    if "loc" in loss_factor:
-        scaled["loc"] = base_amount * loss_factor["loc"]
-    else:
-        scaled["loc"] = loss_amount
-    for field in ("scale", "minimum", "maximum"):
-        if field in loss_factor and not math.isnan(loss_factor[field]):
-            scaled[field] = base_amount * loss_factor[field]
-    return scaled
-
-
 @register("loss")
 class LossInterpreter(Interpreter):
     """Expand a single edge into a main flow and a separate loss component.
 
-    Edge data must contain ``loss_factor``, either a plain number or an
-    uncertainty dict (same convention as bw2data's ``as_uncertainty_dict``)::
+    Edge data must contain ``amount`` (a plain number) and ``loss_factor``
+    (a plain number between 0 and 1)::
 
         {
             "interpreter": "loss",
@@ -38,34 +17,56 @@ class LossInterpreter(Interpreter):
             "loss_factor": 0.05,
         }
 
+    Uncertainty in either ``amount`` or ``loss_factor`` is not supported.
+    The main flow and the loss are correlated (both depend on the same
+    underlying quantity), so sampling them independently would give wrong
+    totals.  Correlated sampling is not yet implemented.
+
     Yields two MatrixEntry objects with the same (row, col):
 
-    1. The main flow with ``amount`` and its uncertainty from the edge.
-    2. The loss flow with ``amount * loss_factor`` and uncertainty scaled
-       proportionally from ``loss_factor``'s own uncertainty fields.
+    1. The main flow with ``amount`` and no uncertainty.
+    2. The loss flow with ``amount * loss_factor`` and no uncertainty.
 
     Both entries are summed into the same matrix cell by bw_processing,
     giving a total of ``amount * (1 + loss_factor)``.
     """
 
     def __call__(self, edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
-        loss_factor = edge_data["loss_factor"]
-        if not isinstance(loss_factor, dict):
-            loss_factor = {"amount": float(loss_factor)}
+        amount = float(edge_data["amount"])
+        loss_factor = float(edge_data["loss_factor"])
 
-        yield MatrixEntry.from_edge_value(edge_data, edge_data)
-
-        loss_value = _scale_loss_uncertainty(loss_factor, edge_data["amount"])
-        yield MatrixEntry.from_edge_value(loss_value, edge_data)
+        yield MatrixEntry(
+            row=edge_data["row"],
+            col=edge_data["col"],
+            amount=amount,
+            flip=edge_data.get("flip", False),
+        )
+        yield MatrixEntry(
+            row=edge_data["row"],
+            col=edge_data["col"],
+            amount=amount * loss_factor,
+            flip=edge_data.get("flip", False),
+        )
 
     def iter_node_ids(self, edge_data: dict) -> Iterator[int]:
         yield from ()
 
     def validate(self, edge_data: dict) -> None:
+        if edge_data.get("uncertainty_type", 0) != 0:
+            raise ValueError(
+                "loss edges do not support uncertainty on 'amount'. "
+                "Uncertainty requires correlated sampling, which is not yet implemented."
+            )
+
         raw = edge_data.get("loss_factor")
         if raw is None:
             raise ValueError("loss edge is missing required field 'loss_factor'")
-        amount = raw["amount"] if isinstance(raw, dict) else float(raw)
+        if isinstance(raw, dict):
+            raise ValueError(
+                "loss_factor must be a plain number, not an uncertainty dict. "
+                "Uncertainty requires correlated sampling, which is not yet implemented."
+            )
+        amount = float(raw)
         if not (0.0 <= amount <= 1.0):
             raise ValueError(
                 f"loss_factor must be between 0 and 1 (inclusive), got {amount}"
