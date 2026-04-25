@@ -1,11 +1,11 @@
 from collections.abc import Iterator
 
 from bw_eotw.matrix_entry import MatrixEntry
-from bw_eotw.registry import register, register_validator
+from bw_eotw.registry import Interpreter, register
 
 
 @register("scenario")
-def scenario(edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
+class ScenarioInterpreter(Interpreter):
     """Select a value by scenario name.
 
     Edge data must contain a ``scenario_values`` dict keyed by scenario name.
@@ -24,29 +24,32 @@ def scenario(edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
     ``scenario_values``.  Both missing and unrecognised scenario names raise a
     ``KeyError`` with a message listing the available scenarios.
     """
-    values: dict = edge_data["scenario_values"]
 
-    if "scenario" not in config:
-        raise KeyError(
-            f"config is missing required key 'scenario'. "
-            f"Available scenarios: {sorted(values)}"
-        )
+    def __call__(self, edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
+        values: dict = edge_data["scenario_values"]
 
-    name = config["scenario"]
-    if name not in values:
-        raise KeyError(
-            f"Scenario '{name}' not found in edge. "
-            f"Available scenarios: {sorted(values)}"
-        )
+        if "scenario" not in config:
+            raise KeyError(
+                f"config is missing required key 'scenario'. "
+                f"Available scenarios: {sorted(values)}"
+            )
 
-    yield MatrixEntry.from_edge_value(values[name], edge_data)
+        name = config["scenario"]
+        if name not in values:
+            raise KeyError(
+                f"Scenario '{name}' not found in edge. "
+                f"Available scenarios: {sorted(values)}"
+            )
 
+        yield MatrixEntry.from_edge_value(values[name], edge_data)
 
-@register_validator("scenario")
-def validate_scenario(edge_data: dict) -> None:
-    """Validate that ``scenario_values`` is present and non-empty."""
-    values = edge_data.get("scenario_values")
-    if not values:
-        raise ValueError(
-            "scenario edge must have a non-empty 'scenario_values' dict"
-        )
+    def iter_node_ids(self, edge_data: dict) -> Iterator[int]:
+        yield from ()
+
+    def validate(self, edge_data: dict) -> None:
+        values = edge_data.get("scenario_values")
+        if not values:
+            raise ValueError(
+                "scenario edge must have a non-empty 'scenario_values' dict"
+            )
+        super().validate(edge_data)

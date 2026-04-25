@@ -245,7 +245,7 @@ class TestScaleLossUncertainty:
 
 class TestLossValidation:
     def validate(self, loss_factor):
-        validate_edge({"interpreter": "loss", "loss_factor": loss_factor})
+        validate_edge({"interpreter": "loss", "loss_factor": loss_factor, "input": ("db", "x")})
 
     def test_zero_is_valid(self):
         self.validate(0.0)
@@ -273,10 +273,11 @@ class TestLossValidation:
 
     def test_missing_loss_factor_raises(self):
         with pytest.raises(ValueError, match="loss_factor"):
-            validate_edge({"interpreter": "loss"})
+            validate_edge({"interpreter": "loss", "input": ("db", "x")})
 
     def test_non_loss_edge_not_validated(self):
-        validate_edge({"interpreter": "temporal", "loss_factor": 99.0})
+        # temporal ignores loss_factor; only the input field is checked
+        validate_edge({"interpreter": "temporal", "loss_factor": 99.0, "input": ("db", "x")})
 
     def test_edge_without_interpreter_not_validated(self):
         validate_edge({"amount": 1.0, "loss_factor": 99.0})
@@ -356,31 +357,35 @@ class TestScenarioInterpreter:
 class TestScenarioValidation:
     def test_missing_scenario_values_raises(self):
         with pytest.raises(ValueError, match="scenario_values"):
-            validate_edge({"interpreter": "scenario"})
+            validate_edge({"interpreter": "scenario", "input": ("db", "x")})
 
     def test_empty_scenario_values_raises(self):
         with pytest.raises(ValueError, match="scenario_values"):
-            validate_edge({"interpreter": "scenario", "scenario_values": {}})
+            validate_edge({"interpreter": "scenario", "scenario_values": {}, "input": ("db", "x")})
 
     def test_valid_scenario_values_passes(self):
-        validate_edge({"interpreter": "scenario", "scenario_values": {"baseline": 1.0}})
+        validate_edge({"interpreter": "scenario", "scenario_values": {"baseline": 1.0}, "input": ("db", "x")})
 
 
 # ---------------------------------------------------------------------------
 # provider_mix
 # ---------------------------------------------------------------------------
 
+# Integer node IDs used in mix entries (stored directly, no key lookup needed)
 MIX = [
-    {"input": ("grid", "wind"),  "share": 0.40},
-    {"input": ("grid", "solar"), "share": 0.35},
-    {"input": ("grid", "gas"),   "share": 0.25},
+    {"input": 10, "share": 0.40},
+    {"input": 11, "share": 0.35},
+    {"input": 12, "share": 0.25},
 ]
-# Stable fake IDs returned by the mocked get_id
-FAKE_IDS = {("grid", "wind"): 10, ("grid", "solar"): 11, ("grid", "gas"): 12}
+
+# Maps integer node IDs to their database names, used to mock _get_node_database
+FAKE_NODE_DATABASES = {10: "grid", 11: "grid", 12: "grid", 99: "other_db"}
 
 
-def _fake_get_id(key):
-    return FAKE_IDS[key]
+def _fake_get_node_database(node_id):
+    if node_id in FAKE_NODE_DATABASES:
+        return FAKE_NODE_DATABASES[node_id]
+    raise ValueError(f"No node found with id {node_id}")
 
 
 class TestProviderMixInterpreter:
@@ -393,8 +398,7 @@ class TestProviderMixInterpreter:
             "mix": mix if mix is not None else MIX,
             **(extra or {}),
         }
-        with patch("bw_eotw.interpreters.provider_mix.get_id", side_effect=_fake_get_id):
-            return list(resolve(edge_data, {}))
+        return list(resolve(edge_data, {}))
 
     def test_yields_one_entry_per_provider(self):
         assert len(self.resolve()) == 3
@@ -414,7 +418,7 @@ class TestProviderMixInterpreter:
         entries = self.resolve()
         assert all(e.col == BASE_EDGE["col"] for e in entries)
 
-    def test_rows_come_from_get_id(self):
+    def test_rows_are_input_ids(self):
         entries = self.resolve()
         assert {e.row for e in entries} == {10, 11, 12}
 
@@ -423,7 +427,7 @@ class TestProviderMixInterpreter:
         assert all(e.flip is True for e in entries)
 
     def test_single_provider_with_full_share(self):
-        mix = [{"input": ("grid", "wind"), "share": 1.0}]
+        mix = [{"input": 10, "share": 1.0}]
         entries = self.resolve(mix=mix, amount=5.0)
         assert len(entries) == 1
         assert entries[0].amount == pytest.approx(5.0)
@@ -437,9 +441,8 @@ class TestProviderMixInterpreter:
             "amount": 1.0,
             "mix": MIX,
         }
-        with patch("bw_eotw.interpreters.provider_mix.get_id", side_effect=_fake_get_id):
-            entries_no_config = list(resolve(edge_data, {}))
-            entries_with_config = list(resolve(edge_data, {"year": 2030, "scenario": "x"}))
+        entries_no_config = list(resolve(edge_data, {}))
+        entries_with_config = list(resolve(edge_data, {"year": 2030, "scenario": "x"}))
         assert [e.amount for e in entries_no_config] == [e.amount for e in entries_with_config]
 
 
@@ -448,13 +451,18 @@ class TestProviderMixValidation:
         base = {
             "interpreter": "provider_mix",
             "product_name": "electricity",
+            "input": ("grid", "electricity"),
             "mix": list(MIX),
         }
         base.update(overrides)
         return base
 
+    # Tests that pass structural checks reach super().validate(), which calls
+    # _get_node_database.  Those tests patch it; structural-failure tests don't need to.
+
     def test_valid_edge_passes(self):
-        validate_edge(self.valid_edge())
+        with patch("bw_eotw.registry._get_node_database", side_effect=_fake_get_node_database):
+            validate_edge(self.valid_edge())
 
     def test_missing_product_name_raises(self):
         with pytest.raises(ValueError, match="product_name"):
@@ -477,42 +485,87 @@ class TestProviderMixValidation:
             validate_edge(edge)
 
     def test_provider_missing_input_raises(self):
-        bad_mix = [{"share": 0.5}, {"input": ("db", "x"), "share": 0.5}]
+        # First provider has no 'input'; structural check fires before DB check.
+        bad_mix = [{"share": 0.5}, {"input": 10, "share": 0.5}]
         with pytest.raises(ValueError, match="input"):
             validate_edge(self.valid_edge(mix=bad_mix))
 
+    def test_provider_non_integer_input_raises(self):
+        bad_mix = [{"input": ("grid", "wind"), "share": 1.0}]
+        with pytest.raises(ValueError, match="integer"):
+            validate_edge(self.valid_edge(mix=bad_mix))
+
     def test_provider_missing_share_raises(self):
-        bad_mix = [{"input": ("db", "x")}, {"input": ("db", "y"), "share": 1.0}]
+        bad_mix = [{"input": 10}, {"input": 11, "share": 1.0}]
         with pytest.raises(ValueError, match="share"):
             validate_edge(self.valid_edge(mix=bad_mix))
 
     def test_share_above_one_raises(self):
-        bad_mix = [{"input": ("db", "x"), "share": 1.1}, {"input": ("db", "y"), "share": 0.0}]
+        bad_mix = [{"input": 10, "share": 1.1}, {"input": 11, "share": 0.0}]
         with pytest.raises(ValueError, match="0 and 1"):
             validate_edge(self.valid_edge(mix=bad_mix))
 
     def test_negative_share_raises(self):
-        bad_mix = [{"input": ("db", "x"), "share": -0.1}, {"input": ("db", "y"), "share": 1.1}]
+        bad_mix = [{"input": 10, "share": -0.1}, {"input": 11, "share": 1.1}]
         with pytest.raises(ValueError, match="0 and 1"):
             validate_edge(self.valid_edge(mix=bad_mix))
 
     def test_shares_not_summing_to_one_raises(self):
-        bad_mix = [{"input": ("db", "x"), "share": 0.4}, {"input": ("db", "y"), "share": 0.4}]
+        bad_mix = [{"input": 10, "share": 0.4}, {"input": 11, "share": 0.4}]
         with pytest.raises(ValueError, match="sum to 1"):
             validate_edge(self.valid_edge(mix=bad_mix))
 
     def test_floating_point_sum_is_accepted(self):
         # 0.1 + 0.2 + 0.7 has a floating-point representation error
         mix = [
-            {"input": ("db", "a"), "share": 0.1},
-            {"input": ("db", "b"), "share": 0.2},
-            {"input": ("db", "c"), "share": 0.7},
+            {"input": 10, "share": 0.1},
+            {"input": 11, "share": 0.2},
+            {"input": 12, "share": 0.7},
         ]
-        validate_edge(self.valid_edge(mix=mix))
+        with patch("bw_eotw.registry._get_node_database", side_effect=_fake_get_node_database):
+            validate_edge(self.valid_edge(mix=mix))
 
     def test_single_provider_at_full_share_is_valid(self):
-        mix = [{"input": ("db", "only"), "share": 1.0}]
-        validate_edge(self.valid_edge(mix=mix))
+        mix = [{"input": 10, "share": 1.0}]
+        with patch("bw_eotw.registry._get_node_database", side_effect=_fake_get_node_database):
+            validate_edge(self.valid_edge(mix=mix))
+
+    def test_provider_from_different_database_raises(self):
+        # node 99 maps to "other_db" in FAKE_NODE_DATABASES
+        bad_mix = [{"input": 99, "share": 0.6}, {"input": 10, "share": 0.4}]
+        with patch("bw_eotw.registry._get_node_database", side_effect=_fake_get_node_database):
+            with pytest.raises(ValueError, match="database"):
+                validate_edge(self.valid_edge(mix=bad_mix))
+
+
+# ---------------------------------------------------------------------------
+# provider_mix — normalize
+# ---------------------------------------------------------------------------
+
+
+class TestProviderMixNormalize:
+    from bw_eotw.registry import normalize_edge
+
+    def test_integer_input_unchanged(self):
+        edge = {"interpreter": "provider_mix", "mix": [{"input": 42, "share": 1.0}]}
+        from bw_eotw.registry import normalize_edge
+        normalize_edge(edge)
+        assert edge["mix"][0]["input"] == 42
+
+    def test_node_instance_converted_to_id(self):
+        from unittest.mock import MagicMock
+        from bw_eotw.registry import normalize_edge
+        fake_node = MagicMock()
+        fake_node.id = 99
+        edge = {"interpreter": "provider_mix", "mix": [{"input": fake_node, "share": 1.0}]}
+        normalize_edge(edge)
+        assert edge["mix"][0]["input"] == 99
+
+    def test_non_interpreter_edge_unchanged(self):
+        from bw_eotw.registry import normalize_edge
+        edge = {"mix": [{"input": "not_an_id", "share": 1.0}]}
+        normalize_edge(edge)
+        assert edge["mix"][0]["input"] == "not_an_id"
 
 
 # ---------------------------------------------------------------------------
@@ -627,23 +680,25 @@ class TestTemporalScenarioInterpreter:
 class TestTemporalScenarioValidation:
     def test_missing_scenario_temporal_values_raises(self):
         with pytest.raises(ValueError, match="scenario_temporal_values"):
-            validate_edge({"interpreter": "temporal_scenario"})
+            validate_edge({"interpreter": "temporal_scenario", "input": ("db", "x")})
 
     def test_empty_scenario_temporal_values_raises(self):
         with pytest.raises(ValueError, match="scenario_temporal_values"):
-            validate_edge({"interpreter": "temporal_scenario", "scenario_temporal_values": {}})
+            validate_edge({"interpreter": "temporal_scenario", "scenario_temporal_values": {}, "input": ("db", "x")})
 
     def test_empty_scenario_raises(self):
         with pytest.raises(ValueError, match="baseline"):
             validate_edge({
                 "interpreter": "temporal_scenario",
                 "scenario_temporal_values": {"baseline": {}},
+                "input": ("db", "x"),
             })
 
     def test_valid_without_default_year_passes(self):
         validate_edge({
             "interpreter": "temporal_scenario",
             "scenario_temporal_values": SCENARIO_TEMPORAL_VALUES,
+            "input": ("db", "x"),
         })
 
     def test_valid_with_default_year_passes(self):
@@ -651,6 +706,7 @@ class TestTemporalScenarioValidation:
             "interpreter": "temporal_scenario",
             "scenario_temporal_values": SCENARIO_TEMPORAL_VALUES,
             "default_year": 2020,
+            "input": ("db", "x"),
         })
 
     def test_default_year_missing_from_one_scenario_raises(self):
@@ -663,6 +719,7 @@ class TestTemporalScenarioValidation:
                 "interpreter": "temporal_scenario",
                 "scenario_temporal_values": values,
                 "default_year": 2020,
+                "input": ("db", "x"),
             })
 
     def test_default_year_present_in_all_scenarios_passes(self):
@@ -674,4 +731,5 @@ class TestTemporalScenarioValidation:
             "interpreter": "temporal_scenario",
             "scenario_temporal_values": values,
             "default_year": 2020,
+            "input": ("db", "x"),
         })

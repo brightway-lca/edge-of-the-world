@@ -1,7 +1,7 @@
 from bw2data.backends.proxies import Exchange, Exchanges
 
 from bw_eotw.matrix_entry import MatrixEntry
-from bw_eotw.registry import resolve, validate_edge
+from bw_eotw.registry import normalize_edge, resolve, validate_edge
 
 
 class RichEdge(Exchange):
@@ -17,6 +17,7 @@ class RichEdge(Exchange):
         return self.get("interpreter")
 
     def save(self, signal: bool = True, data_already_set: bool = False, force_insert: bool = False):
+        normalize_edge(self)
         validate_edge(dict(self))
         return super().save(signal=signal, data_already_set=data_already_set, force_insert=force_insert)
 
