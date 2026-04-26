@@ -6,7 +6,9 @@ from bw_eotw.registry import Interpreter, register
 
 @register("scenario")
 class ScenarioInterpreter(Interpreter):
-    """Select a value by scenario name.
+    requires_config = True
+
+    """Select a value by scenario name.  Requires ``config["scenario"]``.
 
     Edge data must contain a ``scenario_values`` dict keyed by scenario name.
     Each value may be a plain number or an uncertainty dict::

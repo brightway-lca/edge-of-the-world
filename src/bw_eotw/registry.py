@@ -55,7 +55,13 @@ class Interpreter:
     Subclasses that embed node references beyond ``input`` must override
     ``normalize`` to convert any bw2data Node instances to integer IDs
     in-place before the edge is saved.
+
+    Set ``requires_config = True`` on subclasses whose ``__call__`` cannot
+    produce a result without a non-empty config dict.  ``resolve()`` will raise
+    ``ValueError`` before invoking such an interpreter when no config is active.
     """
+
+    requires_config: bool = False
 
     def __call__(self, edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
         raise NotImplementedError
@@ -151,6 +157,8 @@ def resolve(edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
     """Dispatch *edge_data* to its registered interpreter.
 
     Raises ``KeyError`` for unknown interpreter names.
+    Raises ``ValueError`` when the interpreter requires a non-empty config and
+    none is active.
     """
     name = edge_data["interpreter"]
     try:
@@ -159,5 +167,10 @@ def resolve(edge_data: dict, config: dict) -> Iterator[MatrixEntry]:
         raise KeyError(
             f"No interpreter registered for '{name}'. "
             f"Registered interpreters: {sorted(_REGISTRY)}"
+        )
+    if interpreter.requires_config and not config:
+        raise ValueError(
+            f"Interpreter '{name}' requires a config but none is active. "
+            f"Call set_config(db_name, config) before processing."
         )
     yield from interpreter(edge_data, config)
