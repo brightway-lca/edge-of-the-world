@@ -178,3 +178,63 @@ def test_temporal_loop_after_prior_singlevalue_section():
         with demo.set_config({"year": year}):
             score = _run_lca(widget)
         assert score == pytest.approx(exp, rel=1e-4), f"year={year}: got {score}, expected {exp}"
+
+
+@bw2test
+def test_stale_config_zips_do_not_corrupt_subsequent_iterations():
+    """Stale config-hashed zips on disk from a previous session must not cause
+    a subsequent temporal loop to load wrong data.
+
+    Sequence:
+      1. Temporal LCA for year=2020 → writes demo_hash2020.zip.
+      2. Plant a fake empty zip for year=2025 (simulates a stale leftover from
+         a previous notebook session with different node IDs baked in).
+      3. fresh_demo: delete + re-create so node IDs change, add temporal edge.
+      4. Temporal loop: year=2020 triggers process() (dirty from edge saves);
+         process() must purge the stale year=2025 zip so year=2025 is
+         reprocessed with the current node IDs rather than loading stale data.
+    """
+    import zipfile
+
+    from bw_eotw.config import config_hash
+
+    demo, widget, coal = _build_lca_fixture()
+
+    widget.new_edge(
+        input=coal,
+        type="technosphere",
+        interpreter="temporal",
+        temporal_values={2020: 1.20, 2025: 1.00, 2030: 0.85},
+        default_year=2025,
+    ).save()
+
+    with demo.set_config({"year": 2020}):
+        _run_lca(widget)
+
+    # Plant a bogus zip for year=2025 to simulate a stale leftover.
+    hash_2025 = config_hash({"year": 2025})
+    stale_path = demo.dirpath_processed() / f"{demo.filename}_{hash_2025}.zip"
+    with zipfile.ZipFile(stale_path, "w"):
+        pass
+    assert stale_path.exists()
+
+    # fresh_demo: new node IDs make the stale zip invalid.
+    del bw2data.databases["demo"]
+    demo = Database("demo", backend="eotw")
+    demo.register()
+    widget = demo.new_node(code="widget", name="Widget", unit="unit", type="process")
+    widget.save()
+    widget.new_edge(input=widget, type="production", amount=1.0).save()
+    widget.new_edge(
+        input=coal,
+        type="technosphere",
+        interpreter="temporal",
+        temporal_values={2020: 1.20, 2025: 1.00, 2030: 0.85},
+        default_year=2025,
+    ).save()
+
+    expected = {2020: 1.20 * 0.82, 2025: 1.00 * 0.82, 2030: 0.85 * 0.82}
+    for year, exp in expected.items():
+        with demo.set_config({"year": year}):
+            score = _run_lca(widget)
+        assert score == pytest.approx(exp, rel=1e-4), f"year={year}: got {score}, expected {exp}"

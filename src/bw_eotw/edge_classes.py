@@ -1,4 +1,5 @@
 from bw2data.backends.proxies import Exchange, Exchanges
+from bw2data.backends.schema import get_id
 
 from bw_eotw.matrix_entry import MatrixEntry
 from bw_eotw.registry import _REGISTRY, normalize_edge, resolve, validate_edge
@@ -93,8 +94,14 @@ class RichEdge(Exchange):
         Requires the edge to have an ``interpreter`` key.  Use this method
         for inspection and testing; matrix building goes through the backend's
         ``exchange_data_iterator`` override instead.
+
+        ``row`` and ``col`` are populated as integer node IDs (matching what
+        ``exchange_data_iterator`` provides to interpreters at process time).
         """
-        return list(resolve(dict(self), config or {}))
+        data = dict(self)
+        data["row"] = get_id(data["input"])
+        data["col"] = get_id(data["output"])
+        return list(resolve(data, config or {}))
 
 
 class RichEdges(Exchanges):

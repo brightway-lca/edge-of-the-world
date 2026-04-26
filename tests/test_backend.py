@@ -268,3 +268,60 @@ def test_successive_temporal_context_managers_produce_separate_files():
 
     assert "eotw_config" not in databases["db"]
     assert file_2020 != file_2030
+
+
+# ---------------------------------------------------------------------------
+# RichEdge.resolve() — row/col population
+# ---------------------------------------------------------------------------
+
+
+@bw2test
+def test_edge_resolve_populates_row_and_col():
+    """edge.resolve() must add integer row/col node IDs so interpreters work."""
+    db = _make_db("solo")
+    node = _make_node(db, "A", "node A")
+    bg = Database("bg")
+    bg.register()
+    coal = bg.new_node(code="coal", name="Coal", type="process")
+    coal.save()
+    coal.new_edge(input=coal, type="production", amount=1.0).save()
+
+    edge = node.new_edge(
+        input=coal,
+        type="technosphere",
+        interpreter="singlevalue",
+        amount=2.5,
+    )
+    edge.save()
+
+    entries = edge.resolve()
+    assert len(entries) == 1
+    assert entries[0].amount == 2.5
+    assert entries[0].row == coal.id
+    assert entries[0].col == node.id
+
+
+@bw2test
+def test_edge_resolve_provider_mix_uses_col_from_output():
+    """provider_mix.resolve() must use the output node's integer ID as col."""
+    db = _make_db("solo")
+    node = _make_node(db, "A", "node A")
+    provider = db.new_node(code="P", name="Provider", type="process")
+    provider.save()
+    provider.new_edge(input=provider, type="production", amount=1.0).save()
+
+    edge = node.new_edge(
+        input=provider,
+        type="technosphere",
+        interpreter="provider_mix",
+        product_name="heat",
+        amount=1.0,
+        mix=[{"input": provider.id, "share": 1.0}],
+    )
+    edge.save()
+
+    entries = edge.resolve()
+    assert len(entries) == 1
+    assert entries[0].col == node.id
+    assert entries[0].row == provider.id
+    assert entries[0].amount == pytest.approx(1.0)
