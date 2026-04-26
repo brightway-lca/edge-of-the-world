@@ -2,7 +2,7 @@ import math
 from collections.abc import Iterator
 
 from bw_eotw.matrix_entry import MatrixEntry
-from bw_eotw.registry import Interpreter, _HTML_TD, _HTML_TH, _to_node_id, register
+from bw_eotw.registry import Interpreter, _HTML_TD, _HTML_TH, _get_node_database, _to_node_id, register
 
 
 @register("provider_mix")
@@ -124,4 +124,11 @@ class ProviderMixInterpreter(Interpreter):
         if not math.isclose(total, 1.0, abs_tol=1e-9):
             raise ValueError(f"mix shares must sum to 1, got {total:.8f}")
 
-        super().validate(edge_data)
+        # Same-database invariant: enforce across the integer mix IDs directly,
+        # since provider_mix replaces edge_data["input"] as the actual row source.
+        dbs = {_get_node_database(p["input"]) for p in mix}
+        if len(dbs) > 1:
+            raise ValueError(
+                f"All mix inputs must be in the same database, "
+                f"but found multiple: {sorted(dbs)}"
+            )

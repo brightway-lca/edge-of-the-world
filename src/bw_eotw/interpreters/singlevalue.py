@@ -4,8 +4,8 @@ from bw_eotw.matrix_entry import MatrixEntry
 from bw_eotw.registry import Interpreter, _HTML_TD, _HTML_TH, register
 
 
-@register("standard")
-class StandardInterpreter(Interpreter):
+@register("singlevalue")
+class SingleValueInterpreter(Interpreter):
     """Single-cell behaviour identical to a plain bw2data exchange."""
 
     def __call__(self, edge_data: dict, config: dict) -> Iterator[MatrixEntry]:

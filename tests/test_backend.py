@@ -73,15 +73,6 @@ def test_depends_not_duplicated_for_multiple_edges_to_same_db():
 
 
 @bw2test
-def test_config_passed_to_interpreter_during_process():
-    db = _make_db("solo")
-    _make_node(db, "X", "node X")
-    db.process(config={"year": 2030})
-    db.process(config=None)
-    db.process()
-
-
-@bw2test
 def test_write_raises_not_implemented():
     db = _make_db("eotw_db")
     with pytest.raises(NotImplementedError):
@@ -202,3 +193,78 @@ def test_set_config_requires_config_interpreter_raises_without_config():
 
     with pytest.raises(ValueError, match="requires a config"):
         db.process()  # no config set
+
+
+# ---------------------------------------------------------------------------
+# RichEdgesBackend.set_config — method form
+# ---------------------------------------------------------------------------
+
+
+@bw2test
+def test_db_set_config_stores_config():
+    db = _make_db("db")
+    db.set_config({"year": 2030})
+    assert databases["db"]["eotw_config"] == {"year": 2030}
+
+
+@bw2test
+def test_db_set_config_none_clears_config():
+    db = _make_db("db")
+    db.set_config({"year": 2030})
+    db.set_config(None)
+    assert "eotw_config" not in databases["db"]
+
+
+@bw2test
+def test_db_set_config_context_manager_restores_previous():
+    db = _make_db("db")
+    _make_node(db, "A", "node A")
+    db.set_config({"year": 2020})
+    db.process()
+
+    with db.set_config({"year": 2030}):
+        assert databases["db"]["eotw_config"] == {"year": 2030}
+
+    assert databases["db"]["eotw_config"] == {"year": 2020}
+
+
+@bw2test
+def test_db_set_config_context_manager_clears_when_no_previous():
+    db = _make_db("db")
+
+    with db.set_config({"year": 2030}):
+        assert "eotw_config" in databases["db"]
+
+    assert "eotw_config" not in databases["db"]
+
+
+@bw2test
+def test_successive_temporal_context_managers_produce_separate_files():
+    """Two back-to-back set_config context managers must each produce their own
+    processed file and leave no config in metadata after exit."""
+    db = _make_db("db")
+    node = _make_node(db, "A", "node A")
+    node.new_edge(
+        input=node,
+        type="technosphere",
+        interpreter="temporal",
+        temporal_values={2020: 0.5, 2030: 0.8},
+        default_year=2020,
+    ).save()
+
+    with db.set_config({"year": 2020}):
+        assert databases["db"]["eotw_config"] == {"year": 2020}
+        db.process()
+        file_2020 = db.filepath_processed()
+        assert file_2020.exists()
+
+    assert "eotw_config" not in databases["db"]
+
+    with db.set_config({"year": 2030}):
+        assert databases["db"]["eotw_config"] == {"year": 2030}
+        db.process()
+        file_2030 = db.filepath_processed()
+        assert file_2030.exists()
+
+    assert "eotw_config" not in databases["db"]
+    assert file_2020 != file_2030
