@@ -1,7 +1,20 @@
 from bw2data.backends.proxies import Exchange, Exchanges
 
 from bw_eotw.matrix_entry import MatrixEntry
-from bw_eotw.registry import normalize_edge, resolve, validate_edge
+from bw_eotw.registry import _REGISTRY, normalize_edge, resolve, validate_edge
+
+_COLORS = {
+    "standard":          "#6c757d",
+    "temporal":          "#0d6efd",
+    "scenario":          "#198754",
+    "provider_mix":      "#fd7e14",
+    "temporal_scenario": "#6f42c1",
+    "loss":              "#dc3545",
+}
+_DEFAULT_COLOR = "#adb5bd"
+
+_TD = 'style="padding:3px 8px;border:1px solid #dee2e6"'
+_TH = 'style="padding:3px 8px;border:1px solid #dee2e6;background:#f8f9fa;font-weight:bold"'
 
 
 class RichEdge(Exchange):
@@ -15,6 +28,56 @@ class RichEdge(Exchange):
     @property
     def interpreter(self) -> str | None:
         return self.get("interpreter")
+
+    def __repr__(self) -> str:
+        interp = self.get("interpreter")
+        inp = self.get("input", "?")
+        out = self.get("output", "?")
+
+        if interp is None:
+            return (
+                f"RichEdge(input={inp!r}, output={out!r}, "
+                f"amount={self.get('amount', '?')})"
+            )
+
+        parts = [f"interpreter={interp!r}", f"input={inp!r}", f"output={out!r}"]
+        interpreter_obj = _REGISTRY.get(interp)
+        if interpreter_obj is not None:
+            parts.extend(interpreter_obj.repr_parts(dict(self)))
+        return f"RichEdge({', '.join(parts)})"
+
+    def _repr_html_(self) -> str:
+        interp = self.get("interpreter")
+        color = _COLORS.get(interp, _DEFAULT_COLOR)
+        title = f"RichEdge &mdash; <b>{interp}</b>" if interp else "RichEdge"
+        data  = dict(self)
+
+        common = (
+            f'<tr><td {_TH}>input</td>'
+            f'<td {_TD}><code>{self.get("input", "—")}</code></td></tr>'
+            f'<tr><td {_TH}>output</td>'
+            f'<td {_TD}><code>{self.get("output", "—")}</code></td></tr>'
+        )
+
+        if interp is None:
+            extra = (
+                f'<tr><td {_TH}>amount</td>'
+                f'<td {_TD}>{self.get("amount", "—")}</td></tr>'
+            )
+            if self.get("flip"):
+                extra += f'<tr><td {_TH}>flip</td><td {_TD}>True</td></tr>'
+        else:
+            interpreter_obj = _REGISTRY.get(interp)
+            extra = interpreter_obj.html_rows(data) if interpreter_obj is not None else ""
+
+        return (
+            f'<div style="font-family:monospace;font-size:13px;display:inline-block">'
+            f'<div style="background:{color};color:white;padding:4px 10px;'
+            f'border-radius:4px 4px 0 0">{title}</div>'
+            f'<table style="border-collapse:collapse;border:1px solid {color}">'
+            f'{common}{extra}'
+            f'</table></div>'
+        )
 
     def save(self, signal: bool = True, data_already_set: bool = False, force_insert: bool = False):
         normalize_edge(self)

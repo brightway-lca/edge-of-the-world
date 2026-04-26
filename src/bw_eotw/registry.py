@@ -2,6 +2,19 @@ from collections.abc import Callable, Iterator
 
 from bw_eotw.matrix_entry import MatrixEntry
 
+# ── shared HTML helpers available to all Interpreter subclasses ──────────────
+_HTML_TD = 'style="padding:3px 8px;border:1px solid #dee2e6"'
+_HTML_TH = 'style="padding:3px 8px;border:1px solid #dee2e6;background:#f8f9fa;font-weight:bold"'
+
+
+def _fmt_amount(value) -> str:
+    """Format a scalar or uncertainty dict as a short string."""
+    if not isinstance(value, dict):
+        return str(value)
+    amt = value.get("amount", "?")
+    ut  = value.get("uncertainty_type", 0)
+    return f"{amt} (ut={ut})" if ut else str(amt)
+
 
 def _to_node_id(value) -> int:
     """Convert an integer or bw2data Node instance to an integer node ID."""
@@ -86,6 +99,24 @@ class Interpreter:
         database.  The default implementation does nothing; subclasses that
         store node references in interpreter-specific fields must override this.
         """
+
+    def repr_parts(self, edge_data: dict) -> list[str]:
+        """Extra ``key=value`` strings appended to ``RichEdge.__repr__``.
+
+        Return a list of already-formatted strings, e.g.
+        ``["amount=1.5", "years=[2010, 2020]"]``.
+        """
+        return []
+
+    def html_rows(self, edge_data: dict) -> str:
+        """HTML ``<tr>`` rows for the interpreter-specific section of
+        ``RichEdge._repr_html_``.
+
+        Return a raw HTML string of zero or more ``<tr>…</tr>`` elements.
+        Use the module-level ``_HTML_TD`` / ``_HTML_TH`` CSS constants and
+        ``_fmt_amount`` for consistent styling.
+        """
+        return ""
 
     def validate(self, edge_data: dict) -> None:
         """Enforce the same-database invariant across all node references."""

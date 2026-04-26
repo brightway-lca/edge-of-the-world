@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 
 from bw_eotw.matrix_entry import MatrixEntry
-from bw_eotw.registry import Interpreter, register
+from bw_eotw.registry import Interpreter, _HTML_TD, _HTML_TH, register
 
 
 @register("loss")
@@ -50,6 +50,20 @@ class LossInterpreter(Interpreter):
 
     def iter_node_ids(self, edge_data: dict) -> Iterator[int]:
         yield from ()
+
+    def repr_parts(self, edge_data: dict) -> list[str]:
+        return [
+            f"amount={edge_data.get('amount', '?')}",
+            f"loss_factor={edge_data.get('loss_factor', '?')}",
+        ]
+
+    def html_rows(self, edge_data: dict) -> str:
+        return (
+            f'<tr><td {_HTML_TH}>amount</td>'
+            f'<td {_HTML_TD}>{edge_data.get("amount", "—")}</td></tr>'
+            f'<tr><td {_HTML_TH}>loss_factor</td>'
+            f'<td {_HTML_TD}>{edge_data.get("loss_factor", "—")}</td></tr>'
+        )
 
     def validate(self, edge_data: dict) -> None:
         if edge_data.get("uncertainty_type", 0) != 0:

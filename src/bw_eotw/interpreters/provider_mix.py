@@ -2,7 +2,7 @@ import math
 from collections.abc import Iterator
 
 from bw_eotw.matrix_entry import MatrixEntry
-from bw_eotw.registry import Interpreter, _to_node_id, register
+from bw_eotw.registry import Interpreter, _HTML_TD, _HTML_TH, _to_node_id, register
 
 
 @register("provider_mix")
@@ -50,6 +50,35 @@ class ProviderMixInterpreter(Interpreter):
             node_id = provider.get("input")
             if isinstance(node_id, int):
                 yield node_id
+
+    def repr_parts(self, edge_data: dict) -> list[str]:
+        mix = edge_data.get("mix") or []
+        return [
+            f"product={edge_data.get('product_name', '?')!r}",
+            f"n_providers={len(mix)}",
+        ]
+
+    def html_rows(self, edge_data: dict) -> str:
+        mix = edge_data.get("mix") or []
+        inner = (
+            f'<table style="border-collapse:collapse">'
+            f'<tr><th {_HTML_TH}>node&nbsp;id</th><th {_HTML_TH}>share</th></tr>'
+            + "".join(
+                f'<tr><td {_HTML_TD}>{p["input"]}</td>'
+                f'<td {_HTML_TD}>{p["share"]:.1%}</td></tr>'
+                for p in mix
+            )
+            + "</table>"
+        )
+        return (
+            f'<tr><td {_HTML_TH}>product_name</td>'
+            f'<td {_HTML_TD}>{edge_data.get("product_name", "—")}</td></tr>'
+            f'<tr><td {_HTML_TH}>amount</td>'
+            f'<td {_HTML_TD}>{edge_data.get("amount", "—")}</td></tr>'
+            f'<tr><td {_HTML_TH}>mix<br>'
+            f'<small style="font-weight:normal">({len(mix)} providers)</small></td>'
+            f'<td {_HTML_TD}>{inner}</td></tr>'
+        )
 
     def normalize(self, edge_data: dict) -> None:
         """Convert any Node instances in ``mix`` to integer IDs in-place."""
