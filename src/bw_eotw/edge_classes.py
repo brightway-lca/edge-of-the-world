@@ -4,7 +4,7 @@ from bw_eotw.matrix_entry import MatrixEntry
 from bw_eotw.registry import _REGISTRY, normalize_edge, resolve, validate_edge
 
 _COLORS = {
-    "standard":          "#6c757d",
+    "singlevalue":       "#6c757d",
     "temporal":          "#0d6efd",
     "scenario":          "#198754",
     "provider_mix":      "#fd7e14",
@@ -15,6 +15,7 @@ _DEFAULT_COLOR = "#adb5bd"
 
 _TD = 'style="padding:3px 8px;border:1px solid #dee2e6"'
 _TH = 'style="padding:3px 8px;border:1px solid #dee2e6;background:#f8f9fa;font-weight:bold"'
+
 
 
 class RichEdge(Exchange):
@@ -31,16 +32,16 @@ class RichEdge(Exchange):
 
     def __repr__(self) -> str:
         interp = self.get("interpreter")
-        inp = self.get("input", "?")
-        out = self.get("output", "?")
+        inp = repr(self.input)
+        out = repr(self.output)
 
         if interp is None:
             return (
-                f"RichEdge(input={inp!r}, output={out!r}, "
+                f"RichEdge(input={inp}, output={out}, "
                 f"amount={self.get('amount', '?')})"
             )
 
-        parts = [f"interpreter={interp!r}", f"input={inp!r}", f"output={out!r}"]
+        parts = [f"interpreter={interp!r}", f"input={inp}", f"output={out}"]
         interpreter_obj = _REGISTRY.get(interp)
         if interpreter_obj is not None:
             parts.extend(interpreter_obj.repr_parts(dict(self)))
@@ -52,11 +53,13 @@ class RichEdge(Exchange):
         title = f"RichEdge &mdash; <b>{interp}</b>" if interp else "RichEdge"
         data  = dict(self)
 
+        inp = repr(self.input)
+        out = repr(self.output)
         common = (
             f'<tr><td {_TH}>input</td>'
-            f'<td {_TD}><code>{self.get("input", "—")}</code></td></tr>'
+            f'<td {_TD}><code>{inp}</code></td></tr>'
             f'<tr><td {_TH}>output</td>'
-            f'<td {_TD}><code>{self.get("output", "—")}</code></td></tr>'
+            f'<td {_TD}><code>{out}</code></td></tr>'
         )
 
         if interp is None:

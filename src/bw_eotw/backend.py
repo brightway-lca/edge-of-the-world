@@ -66,14 +66,9 @@ class RichEdgesBackend(SQLiteBackend):
         h = config_hash(config)
         return clean_datapackage_name(f"{self.filename}_{h}.zip")
 
-    def process(self, config: dict | None = None, **kwargs):
-        """Build the processed datapackage, resolving edges with *config*.
-
-        *config* is an arbitrary dict passed to every interpreter (e.g.
-        ``{"year": 2030}``).  When omitted, falls back to the config stored in
-        database metadata via ``set_config()``.
-        """
-        self._process_config = config if config is not None else (self.metadata.get("eotw_config") or {})
+    def process(self, **kwargs):
+        """Build the processed datapackage, resolving edges with *config*."""
+        self._process_config = self.metadata.get("eotw_config") or {}
         try:
             super().process(**kwargs)
         finally:

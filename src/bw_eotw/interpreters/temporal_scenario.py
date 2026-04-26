@@ -71,6 +71,10 @@ class TemporalScenarioInterpreter(Interpreter):
 
         yield MatrixEntry.from_edge_value(value, edge_data)
 
+    def normalize(self, edge_data: dict) -> None:
+        if "amount" not in edge_data:
+            edge_data["amount"] = 1.0
+
     def iter_node_ids(self, edge_data: dict) -> Iterator[int]:
         yield from ()
 
