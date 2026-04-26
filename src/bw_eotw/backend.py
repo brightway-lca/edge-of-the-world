@@ -82,11 +82,22 @@ class RichEdgesBackend(SQLiteBackend):
             del self._process_config
 
     def _purge_stale_config_zips(self):
-        """Delete all config-hashed zips except the one just written."""
+        """Delete all stale datapackage variants for this database.
+
+        Deletes every other config-hashed zip.  When a config-specific zip was
+        just written (i.e. the current filename differs from the base filename),
+        also deletes the base zip: it was produced by a different database state
+        and must not be loaded by a subsequent no-config LCA call.
+        """
         current = self.filename_processed()
+        base = super().filename_processed()
         for path in self.dirpath_processed().glob(f"{self.filename}_*.zip"):
             if path.name != current:
                 path.unlink(missing_ok=True)
+        if current != base:
+            base_path = self.dirpath_processed() / base
+            if base_path.exists():
+                base_path.unlink(missing_ok=True)
 
     def exchange_data_iterator(self, qs_func, dependents: set, flip: bool = False) -> Iterable:
         for edge_data in super().exchange_data_iterator(qs_func, dependents, flip):
