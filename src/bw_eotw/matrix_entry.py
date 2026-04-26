@@ -1,33 +1,10 @@
-import dataclasses
 import math
 
+from bw_processing import MatrixEntry as _MatrixEntry
 
-@dataclasses.dataclass(frozen=True)
-class MatrixEntry:
-    """A single realised input value destined for a matrix cell.
 
-    Multiple instances with the same (row, col) are summed during matrix
-    construction, so this is not necessarily the final cell value.
-
-    Field names and defaults match those expected by bw_processing's
-    ``dictionary_formatter``.  Convert to a plain dict with ``as_dict()``
-    before passing to bw_processing.
-    """
-
-    row: int
-    col: int
-    amount: float
-    flip: bool = False
-    uncertainty_type: int = 0
-    loc: float = math.nan
-    scale: float = math.nan
-    shape: float = math.nan
-    minimum: float = math.nan
-    maximum: float = math.nan
-    negative: bool = False
-
-    def as_dict(self) -> dict:
-        return dataclasses.asdict(self)
+class MatrixEntry(_MatrixEntry):
+    """Extends :class:`bw_processing.MatrixEntry` with a domain-specific constructor."""
 
     @classmethod
     def from_edge_value(cls, value: dict | float, edge_data: dict) -> "MatrixEntry":
