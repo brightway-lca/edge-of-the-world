@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 
 from bw_eotw.matrix_entry import MatrixEntry
-from bw_eotw.registry import Interpreter, register
+from bw_eotw.registry import Interpreter, _HTML_TD, _HTML_TH, _fmt_amount, register
 
 
 @register("temporal")
@@ -54,3 +54,36 @@ class TemporalInterpreter(Interpreter):
 
     def iter_node_ids(self, edge_data: dict) -> Iterator[int]:
         yield from ()
+
+    def repr_parts(self, edge_data: dict) -> list[str]:
+        values = edge_data.get("temporal_values") or {}
+        parts = [f"years={sorted(values)}"]
+        default_year = edge_data.get("default_year")
+        if default_year is not None:
+            parts.append(f"default_year={default_year}")
+        return parts
+
+    def html_rows(self, edge_data: dict) -> str:
+        values = edge_data.get("temporal_values") or {}
+        default_year = edge_data.get("default_year")
+        rows = ""
+        if default_year is not None:
+            rows += (
+                f'<tr><td {_HTML_TH}>default_year</td>'
+                f'<td {_HTML_TD}>{default_year}</td></tr>'
+            )
+        inner = (
+            f'<table style="border-collapse:collapse">'
+            f'<tr><th {_HTML_TH}>year</th><th {_HTML_TH}>amount</th></tr>'
+            + "".join(
+                f'<tr><td {_HTML_TD}>{y}</td><td {_HTML_TD}>{_fmt_amount(values[y])}</td></tr>'
+                for y in sorted(values)
+            )
+            + "</table>"
+        )
+        rows += (
+            f'<tr><td {_HTML_TH}>temporal_values<br>'
+            f'<small style="font-weight:normal">({len(values)} years)</small></td>'
+            f'<td {_HTML_TD}>{inner}</td></tr>'
+        )
+        return rows

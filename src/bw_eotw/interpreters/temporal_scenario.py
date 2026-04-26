@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 
 from bw_eotw.matrix_entry import MatrixEntry
-from bw_eotw.registry import Interpreter, register
+from bw_eotw.registry import Interpreter, _HTML_TD, _HTML_TH, _fmt_amount, register
 
 
 @register("temporal_scenario")
@@ -73,6 +73,49 @@ class TemporalScenarioInterpreter(Interpreter):
 
     def iter_node_ids(self, edge_data: dict) -> Iterator[int]:
         yield from ()
+
+    def repr_parts(self, edge_data: dict) -> list[str]:
+        all_values = edge_data.get("scenario_temporal_values") or {}
+        all_years = sorted({y for tv in all_values.values() for y in tv})
+        return [
+            f"scenarios={sorted(all_values)}",
+            f"years={all_years}",
+        ]
+
+    def html_rows(self, edge_data: dict) -> str:
+        all_values  = edge_data.get("scenario_temporal_values") or {}
+        default_year = edge_data.get("default_year")
+        scenarios = sorted(all_values)
+        all_years = sorted({y for tv in all_values.values() for y in tv})
+        rows = ""
+        if default_year is not None:
+            rows += (
+                f'<tr><td {_HTML_TH}>default_year</td>'
+                f'<td {_HTML_TD}>{default_year}</td></tr>'
+            )
+        header = "".join(f'<th {_HTML_TH}>{y}</th>' for y in all_years)
+        grid = "".join(
+            f'<tr><td {_HTML_TH}>{s}</td>'
+            + "".join(
+                f'<td {_HTML_TD}>'
+                f'{_fmt_amount(all_values[s][y]) if y in all_values[s] else "—"}'
+                f'</td>'
+                for y in all_years
+            )
+            + "</tr>"
+            for s in scenarios
+        )
+        rows += (
+            f'<tr><td {_HTML_TH}>scenario_temporal_values<br>'
+            f'<small style="font-weight:normal">'
+            f'({len(scenarios)} scenarios × {len(all_years)} years)</small></td>'
+            f'<td {_HTML_TD}>'
+            f'<table style="border-collapse:collapse">'
+            f'<tr><th {_HTML_TH}></th>{header}</tr>'
+            f'{grid}'
+            f'</table></td></tr>'
+        )
+        return rows
 
     def validate(self, edge_data: dict) -> None:
         all_values = edge_data.get("scenario_temporal_values")
