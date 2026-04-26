@@ -109,6 +109,45 @@ class TestTemporalInterpreter:
         assert entries[0].flip is True
 
 
+class TestTemporalNormalize:
+    def normalize(self, **kwargs):
+        from bw_eotw.registry import normalize_edge
+        edge_data = {"interpreter": "temporal", **kwargs}
+        normalize_edge(edge_data)
+        return edge_data
+
+    def test_amount_inferred_as_mean_of_plain_values(self):
+        d = self.normalize(temporal_values={2020: 0.4, 2030: 0.6})
+        assert d["amount"] == pytest.approx(0.5)
+
+    def test_amount_inferred_from_default_year(self):
+        d = self.normalize(temporal_values={2020: 0.5, 2030: 0.8}, default_year=2020)
+        assert d["amount"] == pytest.approx(0.5)
+
+    def test_default_year_takes_priority_over_mean(self):
+        d = self.normalize(temporal_values={2020: 0.2, 2030: 0.8}, default_year=2020)
+        assert d["amount"] == pytest.approx(0.2)
+
+    def test_amount_inferred_from_uncertainty_dict_via_default_year(self):
+        d = self.normalize(
+            temporal_values={2020: {"amount": 0.4, "uncertainty_type": 2}},
+            default_year=2020,
+        )
+        assert d["amount"] == pytest.approx(0.4)
+
+    def test_explicit_amount_not_overwritten(self):
+        d = self.normalize(temporal_values={2020: 0.5}, amount=2.0)
+        assert d["amount"] == pytest.approx(2.0)
+
+    def test_empty_temporal_values_leaves_amount_absent(self):
+        d = self.normalize(temporal_values={})
+        assert "amount" not in d
+
+    def test_missing_temporal_values_leaves_amount_absent(self):
+        d = self.normalize()
+        assert "amount" not in d
+
+
 # ---------------------------------------------------------------------------
 # loss
 # ---------------------------------------------------------------------------

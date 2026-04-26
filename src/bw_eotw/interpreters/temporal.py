@@ -52,6 +52,25 @@ class TemporalInterpreter(Interpreter):
 
         yield MatrixEntry.from_edge_value(value, edge_data)
 
+    def normalize(self, edge_data: dict) -> None:
+        """Infer ``amount`` from ``temporal_values`` when not explicitly set.
+
+        Uses the ``default_year`` value when present, otherwise the mean of all
+        values.  Leaves ``amount`` untouched if already set.
+        """
+        if "amount" in edge_data:
+            return
+        values = edge_data.get("temporal_values") or {}
+        if not values:
+            return
+        default_year = edge_data.get("default_year")
+        if default_year is not None and default_year in values:
+            raw = values[default_year]
+        else:
+            raws = [v["amount"] if isinstance(v, dict) else v for v in values.values()]
+            raw = sum(raws) / len(raws)
+        edge_data["amount"] = float(raw["amount"] if isinstance(raw, dict) else raw)
+
     def iter_node_ids(self, edge_data: dict) -> Iterator[int]:
         yield from ()
 

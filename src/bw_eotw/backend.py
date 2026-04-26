@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from bw2data.backends import SQLiteBackend
 from bw_processing import clean_datapackage_name
 
-from bw_eotw.config import config_hash
+from bw_eotw.config import config_hash, set_config as _set_config
 from bw_eotw.node_classes import RichNode
 from bw_eotw.registry import resolve
 
@@ -45,6 +45,19 @@ class RichEdgesBackend(SQLiteBackend):
             "RichEdgesBackend does not support write(). "
             "Use individual node and edge methods instead."
         )
+
+    def set_config(self, config: dict | None):
+        """Set the active config for this database; returns a context manager.
+
+        Delegates to the module-level :class:`set_config`, passing ``self.name``
+        automatically::
+
+            db.set_config({"year": 2030})
+
+            with db.set_config({"year": 2030}):
+                fu, data_objs, _ = bw2data.prepare_lca_inputs(...)
+        """
+        return _set_config(self.name, config)
 
     def filename_processed(self):
         config = self.metadata.get("eotw_config") or {}

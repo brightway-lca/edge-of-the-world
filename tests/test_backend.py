@@ -202,3 +202,46 @@ def test_set_config_requires_config_interpreter_raises_without_config():
 
     with pytest.raises(ValueError, match="requires a config"):
         db.process()  # no config set
+
+
+# ---------------------------------------------------------------------------
+# RichEdgesBackend.set_config — method form
+# ---------------------------------------------------------------------------
+
+
+@bw2test
+def test_db_set_config_stores_config():
+    db = _make_db("db")
+    db.set_config({"year": 2030})
+    assert databases["db"]["eotw_config"] == {"year": 2030}
+
+
+@bw2test
+def test_db_set_config_none_clears_config():
+    db = _make_db("db")
+    db.set_config({"year": 2030})
+    db.set_config(None)
+    assert "eotw_config" not in databases["db"]
+
+
+@bw2test
+def test_db_set_config_context_manager_restores_previous():
+    db = _make_db("db")
+    _make_node(db, "A", "node A")
+    db.set_config({"year": 2020})
+    db.process()
+
+    with db.set_config({"year": 2030}):
+        assert databases["db"]["eotw_config"] == {"year": 2030}
+
+    assert databases["db"]["eotw_config"] == {"year": 2020}
+
+
+@bw2test
+def test_db_set_config_context_manager_clears_when_no_previous():
+    db = _make_db("db")
+
+    with db.set_config({"year": 2030}):
+        assert "eotw_config" in databases["db"]
+
+    assert "eotw_config" not in databases["db"]
