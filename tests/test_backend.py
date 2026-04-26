@@ -1,8 +1,10 @@
 import pytest
+from bw2data import databases
 from bw2data.database import Database
 from bw2data.tests import bw2test
 
 import bw_eotw  # noqa: F401 — registers the backend
+from bw_eotw import set_config
 
 
 def _make_db(name):
@@ -91,3 +93,112 @@ def test_efficient_write_many_data_raises_not_implemented():
     db = _make_db("eotw_db")
     with pytest.raises(NotImplementedError):
         db._efficient_write_many_data([])
+
+
+# ---------------------------------------------------------------------------
+# set_config — metadata, dirty flag, filename
+# ---------------------------------------------------------------------------
+
+
+@bw2test
+def test_set_config_stores_config_in_metadata():
+    db = _make_db("db")
+    set_config("db", {"year": 2030})
+    assert databases["db"]["eotw_config"] == {"year": 2030}
+
+
+@bw2test
+def test_set_config_none_clears_config_from_metadata():
+    db = _make_db("db")
+    set_config("db", {"year": 2030})
+    set_config("db", None)
+    assert "eotw_config" not in databases["db"]
+
+
+@bw2test
+def test_set_config_marks_dirty_when_file_missing():
+    db = _make_db("db")
+    _make_node(db, "A", "node A")
+    set_config("db", {"year": 2030})
+    assert databases["db"].get("dirty")
+
+
+@bw2test
+def test_set_config_does_not_mark_dirty_when_file_exists():
+    db = _make_db("db")
+    _make_node(db, "A", "node A")
+    set_config("db", {"year": 2030})
+    db.process()
+    databases["db"]["dirty"] = False
+    databases.flush()
+    set_config("db", {"year": 2030})  # same config — file already exists
+    assert not databases["db"].get("dirty")
+
+
+@bw2test
+def test_filename_processed_includes_config_hash():
+    db = _make_db("db")
+    set_config("db", {"year": 2030})
+    filename = db.filename_processed()
+    assert "db" in filename
+    assert filename.endswith(".zip")
+    # A different config produces a different filename
+    set_config("db", {"year": 2040})
+    assert db.filename_processed() != filename
+
+
+@bw2test
+def test_filename_processed_default_when_no_config():
+    db = _make_db("db")
+    assert db.filename_processed() == db.__class__.__bases__[0].filename_processed(db)
+
+
+@bw2test
+def test_process_uses_metadata_config():
+    db = _make_db("db")
+    _make_node(db, "A", "node A")
+    set_config("db", {"year": 2030})
+    db.process()  # no explicit config — should read from metadata
+    assert db.filepath_processed().exists()
+
+
+@bw2test
+def test_set_config_context_manager_restores_previous():
+    db = _make_db("db")
+    _make_node(db, "A", "node A")
+    set_config("db", {"year": 2020})
+    db.process()
+
+    with set_config("db", {"year": 2030}):
+        assert databases["db"]["eotw_config"] == {"year": 2030}
+
+    assert databases["db"]["eotw_config"] == {"year": 2020}
+
+
+@bw2test
+def test_set_config_context_manager_clears_when_no_previous():
+    db = _make_db("db")
+    _make_node(db, "A", "node A")
+
+    with set_config("db", {"year": 2030}):
+        assert "eotw_config" in databases["db"]
+
+    assert "eotw_config" not in databases["db"]
+
+
+@bw2test
+def test_set_config_requires_config_interpreter_raises_without_config():
+    from bw_eotw.registry import resolve
+
+    db = _make_db("db")
+    node = _make_node(db, "A", "node A")
+    node.new_edge(
+        input=node,
+        type="technosphere",
+        amount=1.0,
+        interpreter="scenario",
+        scenario_values={"baseline": 0.5},
+    ).save()
+
+    with pytest.raises(ValueError, match="requires a config"):
+        db.process()  # no config set

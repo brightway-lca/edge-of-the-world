@@ -11,6 +11,7 @@ __all__ = (
     "normalize_edge",
     "register",
     "resolve",
+    "set_config",
     "validate_edge",
 )
 
@@ -22,6 +23,7 @@ from bw_eotw.backend import RichEdgesBackend
 from bw_eotw.edge_classes import RichEdge, RichEdges
 from bw_eotw.matrix_entry import MatrixEntry
 from bw_eotw.node_classes import RichNode
+from bw_eotw.config import set_config
 from bw_eotw.registry import Interpreter, normalize_edge, register, resolve, validate_edge
 
 import bw_eotw.interpreters  # noqa: F401 — triggers interpreter registration

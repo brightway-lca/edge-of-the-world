@@ -6,6 +6,8 @@ from bw_eotw.registry import Interpreter, register
 
 @register("temporal_scenario")
 class TemporalScenarioInterpreter(Interpreter):
+    requires_config = True
+
     """Select a value by scenario name and then by year.
 
     Edge data must contain ``scenario_temporal_values``, a nested dict keyed

@@ -1,7 +1,9 @@
 from collections.abc import Iterable
 
 from bw2data.backends import SQLiteBackend
+from bw_processing import clean_datapackage_name
 
+from bw_eotw.config import config_hash
 from bw_eotw.node_classes import RichNode
 from bw_eotw.registry import resolve
 
@@ -44,13 +46,21 @@ class RichEdgesBackend(SQLiteBackend):
             "Use individual node and edge methods instead."
         )
 
+    def filename_processed(self):
+        config = self.metadata.get("eotw_config") or {}
+        if not config:
+            return super().filename_processed()
+        h = config_hash(config)
+        return clean_datapackage_name(f"{self.filename}_{h}.zip")
+
     def process(self, config: dict | None = None, **kwargs):
         """Build the processed datapackage, resolving edges with *config*.
 
         *config* is an arbitrary dict passed to every interpreter (e.g.
-        ``{"year": 2030}``).  Pass ``None`` to use an empty config.
+        ``{"year": 2030}``).  When omitted, falls back to the config stored in
+        database metadata via ``set_config()``.
         """
-        self._process_config = config or {}
+        self._process_config = config if config is not None else (self.metadata.get("eotw_config") or {})
         try:
             super().process(**kwargs)
         finally:
