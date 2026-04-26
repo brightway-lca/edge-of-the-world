@@ -15,7 +15,7 @@ __all__ = (
     "validate_edge",
 )
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 from bw2data.subclass_mapping import DATABASE_BACKEND_MAPPING, NODE_PROCESS_CLASS_MAPPING
 
