@@ -67,12 +67,26 @@ class RichEdgesBackend(SQLiteBackend):
         return clean_datapackage_name(f"{self.filename}_{h}.zip")
 
     def process(self, **kwargs):
-        """Build the processed datapackage, resolving edges with *config*."""
+        """Build the processed datapackage, resolving edges with *config*.
+
+        After writing the datapackage for the active config, any other
+        config-hashed zips for this database are deleted.  They are stale:
+        ``process()`` is only called when the database is dirty (contents
+        changed), which invalidates every previously cached config variant.
+        """
         self._process_config = self.metadata.get("eotw_config") or {}
         try:
             super().process(**kwargs)
         finally:
+            self._purge_stale_config_zips()
             del self._process_config
+
+    def _purge_stale_config_zips(self):
+        """Delete all config-hashed zips except the one just written."""
+        current = self.filename_processed()
+        for path in self.dirpath_processed().glob(f"{self.filename}_*.zip"):
+            if path.name != current:
+                path.unlink(missing_ok=True)
 
     def exchange_data_iterator(self, qs_func, dependents: set, flip: bool = False) -> Iterable:
         for edge_data in super().exchange_data_iterator(qs_func, dependents, flip):
