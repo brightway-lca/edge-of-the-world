@@ -1,7 +1,7 @@
 from bw2data.backends.proxies import Activity
 from bw2data.configuration import labels
 
-from bw_eotw.edge_classes import RichEdges
+from bw_eotw.edge_classes import RichEdge, RichEdges
 
 
 class RichNode(Activity):
@@ -10,6 +10,19 @@ class RichNode(Activity):
     Returns `RichEdge` objects when iterating over exchanges so that callers
     can access rich edge metadata (e.g. `matrix_contributions`).
     """
+
+    def new_edge(self, **kwargs) -> "RichEdge":
+        """Create a new :class:`RichEdge` linked to this node.
+
+        Overrides the parent implementation so that :meth:`RichEdge.save`
+        (which calls ``normalize_edge`` and ``validate_edge``) is used instead
+        of the plain ``Exchange.save``.
+        """
+        exc = RichEdge()
+        exc["output"] = self.key
+        for key, value in kwargs.items():
+            exc[key] = value
+        return exc
 
     def exchanges(self, exchanges_class=None):
         return super().exchanges(exchanges_class=exchanges_class or RichEdges)
