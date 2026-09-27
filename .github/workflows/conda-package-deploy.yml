@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
       - uses: conda-incubator/setup-miniconda@v3
         with:
-          python-version: 3.12
+          python-version: 3.14
           auto-activate-base: true
       - name: Publish distribution 📦 to conda channels
         if: startsWith(github.ref, 'refs/tags')
